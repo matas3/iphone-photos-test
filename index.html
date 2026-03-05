@@ -24,13 +24,17 @@ video, canvas{
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 
-navigator.mediaDevices.getUserMedia({video:true})
-.then(stream=>{
+navigator.mediaDevices.getUserMedia({
+  video: { facingMode: { exact: "environment" } }
+})
+.then(stream => {
   video.srcObject = stream;
+})
+.catch(err => {
+  console.error("Error accessing camera:", err);
 });
 
 document.body.addEventListener("click", () => {
-
   const ctx = canvas.getContext("2d");
 
   canvas.width = video.videoWidth;
@@ -44,7 +48,6 @@ document.body.addEventListener("click", () => {
   link.href = image;
   link.download = "photo.png";
   link.click();
-
 });
 </script>
 
