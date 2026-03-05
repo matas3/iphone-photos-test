@@ -2,27 +2,22 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="/index.css">
 <style>
-body{
-  margin:0;
-  background:black;
-  height:100vh;
-}
-video, canvas{
-  display:none;
-}
+body { margin:0; background:black; height:100vh; display:flex; justify-content:center; align-items:center; flex-direction:column; color:white; }
+video, canvas { display:none; }
+button { margin:10px; padding:10px 20px; font-size:16px; }
 </style>
 </head>
-
 <body>
 
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas"></canvas>
+<button id="captureBtn">Take Photo</button>
 
 <script>
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
+const captureBtn = document.getElementById("captureBtn");
 
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: { exact: "environment" } }
@@ -34,16 +29,15 @@ navigator.mediaDevices.getUserMedia({
   console.error("Error accessing camera:", err);
 });
 
-document.body.addEventListener("click", () => {
+captureBtn.addEventListener("click", () => {
   const ctx = canvas.getContext("2d");
-
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
-
-  ctx.drawImage(video,0,0);
+  ctx.drawImage(video, 0, 0);
 
   const image = canvas.toDataURL("image/png");
 
+  // Trigger download
   const link = document.createElement("a");
   link.href = image;
   link.download = "photo.png";
