@@ -6,6 +6,12 @@ body {
   margin: 0;
   height: 100vh;
   background: black;
+  transition: background 0.2s ease;
+}
+
+/* recording state */
+body.recording {
+  background: #111; /* slightly lighter */
 }
 
 #openBtn {
@@ -39,6 +45,7 @@ let isRecording = false;
 
 const video = document.getElementById('video');
 
+// start camera
 async function startCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -47,14 +54,22 @@ async function startCamera() {
     });
     video.srcObject = stream;
   } catch (err) {
+    alert("Camera/mic permission needed");
     console.error(err);
   }
 }
 
+// start recording
 function startRecording() {
   recordedChunks = [];
 
-  mediaRecorder = new MediaRecorder(stream);
+  // better compatibility
+  let options = { mimeType: 'video/webm;codecs=vp8,opus' };
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/webm' };
+  }
+
+  mediaRecorder = new MediaRecorder(stream, options);
 
   mediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0) recordedChunks.push(e.data);
@@ -62,45 +77,55 @@ function startRecording() {
 
   mediaRecorder.start();
   isRecording = true;
+
+  document.body.classList.add("recording");
 }
 
 // stop + download
-function stopRecordingAndDownload() {
-  if (!mediaRecorder) return;
+function stopRecording() {
+  return new Promise((resolve) => {
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      resolve(blob);
+    };
+    mediaRecorder.stop();
+  });
+}
 
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-    const url = URL.createObjectURL(blob);
+// download helper (must be user-triggered)
+function downloadBlob(blob) {
+  const url = URL.createObjectURL(blob);
 
-    // force download
-    const a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = url;
-    a.download = 'video.webm';
-    document.body.appendChild(a);
-    a.click();
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'video.webm';
+  document.body.appendChild(a);
+  a.click();
 
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 100);
-  };
-
-  mediaRecorder.stop();
-  isRecording = false;
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 200);
 }
 
 // tap toggle
-document.body.addEventListener('click', (e) => {
+document.body.addEventListener('click', async (e) => {
   if (e.target.id === 'openBtn') return;
 
   if (!isRecording) {
     startRecording();
   } else {
-    stopRecordingAndDownload();
+    document.body.classList.remove("recording");
+    isRecording = false;
+
+    const blob = await stopRecording();
+
+    // THIS is now directly tied to the tap
+    downloadBlob(blob);
   }
 });
 
+// init
 startCamera();
 </script>
 
