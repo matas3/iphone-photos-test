@@ -8,7 +8,6 @@ body {
   background: black;
 }
 
-/* button */
 #openBtn {
   position: absolute;
   z-index: 10;
@@ -40,7 +39,6 @@ let isRecording = false;
 
 const video = document.getElementById('video');
 
-// start camera on load
 async function startCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -49,60 +47,60 @@ async function startCamera() {
     });
     video.srcObject = stream;
   } catch (err) {
-    console.error("Camera error:", err);
+    console.error(err);
   }
 }
 
-// start recording
 function startRecording() {
   recordedChunks = [];
 
   mediaRecorder = new MediaRecorder(stream);
 
   mediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) {
-      recordedChunks.push(e.data);
-    }
+    if (e.data.size > 0) recordedChunks.push(e.data);
   };
+
+  mediaRecorder.start();
+  isRecording = true;
+}
+
+// stop + download
+function stopRecordingAndDownload() {
+  if (!mediaRecorder) return;
 
   mediaRecorder.onstop = () => {
     const blob = new Blob(recordedChunks, { type: 'video/webm' });
     const url = URL.createObjectURL(blob);
 
+    // force download
     const a = document.createElement('a');
+    a.style.display = 'none';
     a.href = url;
     a.download = 'video.webm';
+    document.body.appendChild(a);
     a.click();
 
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
   };
 
-  mediaRecorder.start();
-  isRecording = true;
-  console.log("Recording started");
-}
-
-// stop recording
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== "inactive") {
-    mediaRecorder.stop();
-  }
+  mediaRecorder.stop();
   isRecording = false;
-  console.log("Recording stopped");
 }
 
-// toggle on tap
+// tap toggle
 document.body.addEventListener('click', (e) => {
   if (e.target.id === 'openBtn') return;
 
   if (!isRecording) {
     startRecording();
   } else {
-    stopRecording();
+    stopRecordingAndDownload();
   }
 });
 
-// start camera immediately
 startCamera();
 </script>
 
