@@ -1,0 +1,118 @@
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {
+  margin: 0;
+  height: 100vh;
+  background: black;
+}
+
+/* button */
+#openBtn {
+  position: absolute;
+  z-index: 10;
+  padding: 10px;
+  font-size: 14px;
+  background: black;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+video {
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<button id="openBtn" onclick="location.href='index.html'">Back</button>
+
+<video id="video" autoplay playsinline></video>
+
+<script>
+let mediaRecorder;
+let recordedChunks = [];
+let stream;
+
+const video = document.getElementById('video');
+
+// start camera on load
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: true
+    });
+    video.srcObject = stream;
+  } catch (err) {
+    console.error("Camera error:", err);
+  }
+}
+
+// start recording
+function startRecording() {
+  recordedChunks = [];
+
+  mediaRecorder = new MediaRecorder(stream);
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) {
+      recordedChunks.push(e.data);
+    }
+  };
+
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+
+    // download video
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'video.webm';
+    a.click();
+
+    URL.revokeObjectURL(url);
+  };
+
+  mediaRecorder.start();
+  console.log("Recording started");
+}
+
+// stop recording
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+    console.log("Recording stopped");
+  }
+}
+
+// start camera immediately
+startCamera();
+
+// HOLD = start recording
+document.body.addEventListener('mousedown', (e) => {
+  if (e.target.id === 'openBtn') return;
+  startRecording();
+});
+
+// RELEASE = stop recording
+document.body.addEventListener('mouseup', () => {
+  stopRecording();
+});
+
+// MOBILE SUPPORT
+document.body.addEventListener('touchstart', (e) => {
+  if (e.target.id === 'openBtn') return;
+  startRecording();
+});
+
+document.body.addEventListener('touchend', () => {
+  stopRecording();
+});
+</script>
+
+</body>
+</html>
