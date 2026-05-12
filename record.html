@@ -36,6 +36,7 @@ video {
 let mediaRecorder;
 let recordedChunks = [];
 let stream;
+let isRecording = false;
 
 const video = document.getElementById('video');
 
@@ -68,7 +69,6 @@ function startRecording() {
     const blob = new Blob(recordedChunks, { type: 'video/webm' });
     const url = URL.createObjectURL(blob);
 
-    // download video
     const a = document.createElement('a');
     a.href = url;
     a.download = 'video.webm';
@@ -78,6 +78,7 @@ function startRecording() {
   };
 
   mediaRecorder.start();
+  isRecording = true;
   console.log("Recording started");
 }
 
@@ -85,33 +86,24 @@ function startRecording() {
 function stopRecording() {
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
     mediaRecorder.stop();
-    console.log("Recording stopped");
   }
+  isRecording = false;
+  console.log("Recording stopped");
 }
+
+// toggle on tap
+document.body.addEventListener('click', (e) => {
+  if (e.target.id === 'openBtn') return;
+
+  if (!isRecording) {
+    startRecording();
+  } else {
+    stopRecording();
+  }
+});
 
 // start camera immediately
 startCamera();
-
-// HOLD = start recording
-document.body.addEventListener('mousedown', (e) => {
-  if (e.target.id === 'openBtn') return;
-  startRecording();
-});
-
-// RELEASE = stop recording
-document.body.addEventListener('mouseup', () => {
-  stopRecording();
-});
-
-// MOBILE SUPPORT
-document.body.addEventListener('touchstart', (e) => {
-  if (e.target.id === 'openBtn') return;
-  startRecording();
-});
-
-document.body.addEventListener('touchend', () => {
-  stopRecording();
-});
 </script>
 
 </body>
