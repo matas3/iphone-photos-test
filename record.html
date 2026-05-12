@@ -6,12 +6,11 @@ body {
   margin: 0;
   height: 100vh;
   background: black;
-  transition: background 0.2s ease;
+  transition: background 0.2s;
 }
 
-/* recording state */
 body.recording {
-  background: #111; /* slightly lighter */
+  background: #111;
 }
 
 #openBtn {
@@ -25,27 +24,23 @@ body.recording {
   border-radius: 8px;
   cursor: pointer;
 }
-
-video {
-  display: none;
-}
 </style>
 </head>
 <body>
 
 <button id="openBtn" onclick="location.href='index.html'">Back</button>
 
-<video id="video" autoplay playsinline></video>
+<video id="video" autoplay playsinline style="display:none;"></video>
 
 <script>
 let mediaRecorder;
 let recordedChunks = [];
 let stream;
 let isRecording = false;
+let isProcessing = false; // prevents double tap bug
 
 const video = document.getElementById('video');
 
-// start camera
 async function startCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -54,22 +49,14 @@ async function startCamera() {
     });
     video.srcObject = stream;
   } catch (err) {
-    alert("Camera/mic permission needed");
-    console.error(err);
+    alert("Camera permission needed");
   }
 }
 
-// start recording
 function startRecording() {
   recordedChunks = [];
 
-  // better compatibility
-  let options = { mimeType: 'video/webm;codecs=vp8,opus' };
-  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-    options = { mimeType: 'video/webm' };
-  }
-
-  mediaRecorder = new MediaRecorder(stream, options);
+  mediaRecorder = new MediaRecorder(stream);
 
   mediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0) recordedChunks.push(e.data);
@@ -77,11 +64,9 @@ function startRecording() {
 
   mediaRecorder.start();
   isRecording = true;
-
   document.body.classList.add("recording");
 }
 
-// stop + download
 function stopRecording() {
   return new Promise((resolve) => {
     mediaRecorder.onstop = () => {
@@ -92,8 +77,7 @@ function stopRecording() {
   });
 }
 
-// download helper (must be user-triggered)
-function downloadBlob(blob) {
+function download(blob) {
   const url = URL.createObjectURL(blob);
 
   const a = document.createElement('a');
@@ -108,24 +92,30 @@ function downloadBlob(blob) {
   }, 200);
 }
 
-// tap toggle
 document.body.addEventListener('click', async (e) => {
   if (e.target.id === 'openBtn') return;
+
+  // prevent spam / double trigger
+  if (isProcessing) return;
 
   if (!isRecording) {
     startRecording();
   } else {
+    isProcessing = true;
+
     document.body.classList.remove("recording");
     isRecording = false;
 
     const blob = await stopRecording();
+    download(blob);
 
-    // THIS is now directly tied to the tap
-    downloadBlob(blob);
+    // small delay prevents instant re-trigger
+    setTimeout(() => {
+      isProcessing = false;
+    }, 800);
   }
 });
 
-// init
 startCamera();
 </script>
 
