@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Camera</title>
+<style>
+  :root{
+    --bg:#000;
+    --btn-bg: rgba(255,255,255,0.12);
+    --btn-bg-active: rgba(255,255,255,0.28);
+    --btn-border: rgba(255,255,255,0.25);
+    --text: #eaeaea;
+    --rec-color: rgba(210,210,210,0.7);
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body{
+    margin:0; padding:0; height:100%; width:100%;
+    background: var(--bg);
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+  }
+  #app{
+    position: fixed; inset: 0;
+    background: var(--bg);
+  }
+  /* video stays fully opaque/visible to the browser so it keeps decoding
+     live frames at full rate - it's just visually covered by #blackout.
+     (Hiding it with opacity/visibility caused stale, blurry frames.) */
+  video{
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    background: #000;
+  }
+  canvas{ display: none; }
+
+  #blackout{
+    position: absolute; inset: 0;
+    background: #000;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* top bar */
+  #topBar{
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 14px);
+    left: 0; right: 0;
+    display: flex;
+    justify-content: center;
+    z-index: 10;
+  }
+  #modeSwitch{
+    display: flex;
+    background: rgba(20,20,20,0.55);
+    border: 1px solid var(--btn-border);
+    border-radius: 999px;
+    padding: 4px;
+    backdrop-filter: blur(6px);
+  }
+  .modeBtn{
+    border: none;
+    background: transparent;
+    color: rgba(255,255,255,0.55);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .modeBtn.active{
+    background: var(--btn-bg-active);
+    color: #fff;
+  }
+
+  /* self-timer control, top-right */
+  #timerWrap{
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 14px);
+    right: 14px;
+    z-index: 10;
+  }
+  #timerBtn{
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--btn-border);
+    background: var(--btn-bg);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #timerMenu{
+    position: absolute;
+    top: 36px;
+    right: 0;
+    background: rgba(20,20,20,0.9);
+    border: 1px solid var(--btn-border);
+    border-radius: 10px;
+    padding: 4px;
+    display: none;
+    flex-direction: column;
+    min-width: 64px;
+  }
+  #timerMenu.show{ display: flex; }
+  .timerOpt{
+    border: none;
+    background: transparent;
+    color: #eee;
+    font-size: 12px;
+    padding: 7px 10px;
+    text-align: left;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .timerOpt.active{ background: var(--btn-bg-active); }
+
+  #recTime{
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 14px);
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 42px;
+    background: rgba(20,20,20,0.7);
+    border: 1px solid var(--rec-color);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 8px;
+    display: none;
+    z-index: 10;
+  }
+  #recTime.show{ display: block; }
+
+  /* countdown, center */
+  #countdown{
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 68px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.85);
+    z-index: 12;
+    display: none;
+  }
+  #countdown.show{ display: block; }
+
+  /* toast */
+  #toast{
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 60px);
+    left: 50%; transform: translateX(-50%);
+    background: rgba(20,20,20,0.85);
+    color: #fff;
+    font-size: 13px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+    z-index: 30;
+    white-space: nowrap;
+  }
+  #toast.show{ opacity: 1; }
+
+  #hint{
+    position: absolute;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: rgba(255,255,255,0.45);
+    letter-spacing: 0.03em;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* light gray recording border (was red) */
+  #app.recording::after{
+    content: "";
+    position: absolute;
+    inset: 0;
+    border: 3px solid var(--rec-color);
+    pointer-events: none;
+    z-index: 15;
+    animation: pulseBorder 1.4s ease-in-out infinite;
+  }
+  @keyframes pulseBorder{
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.85; }
+  }
+
+  /* bottom bar */
+  #bottomBar{
+    position: absolute;
+    left: 0; right: 0;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 34px;
+    z-index: 10;
+  }
+  .sideCol{
+    width: 50px;
+    display: flex;
+    justify-content: center;
+  }
+
+  #zoomBtn{
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--btn-border);
+    background: var(--btn-bg);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #zoomBtn:disabled{ opacity: 0.25; }
+
+  #downloadBtn{
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    border: 1px solid var(--btn-border);
+    background: var(--btn-bg);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  #downloadBtn svg{ width: 18px; height: 18px; }
+  #badge{
+    position: absolute;
+    top: -5px; right: -5px;
+    min-width: 16px; height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: #666;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+  #badge.show{ display: flex; }
+</style>
+</head>
+<body>
+<div id="app">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <div id="blackout"></div>
+
+  <div id="topBar">
+    <div id="modeSwitch">
+      <button class="modeBtn active" data-mode="photo">PHOTO</button>
+      <button class="modeBtn" data-mode="video">VIDEO</button>
+    </div>
+  </div>
+
+  <div id="timerWrap">
+    <button id="timerBtn">Off</button>
+    <div id="timerMenu">
+      <button class="timerOpt active" data-t="0">Off</button>
+      <button class="timerOpt" data-t="2">2s</button>
+      <button class="timerOpt" data-t="5">5s</button>
+      <button class="timerOpt" data-t="10">10s</button>
+    </div>
+  </div>
+
+  <div id="recTime">00:00</div>
+  <div id="countdown"></div>
+  <div id="toast"></div>
+
+  <div id="hint">Tap anywhere to capture</div>
+
+  <div id="bottomBar">
+    <div class="sideCol">
+      <button id="zoomBtn" disabled>1x</button>
+    </div>
+    <div class="sideCol">
+      <button id="downloadBtn" title="Download all">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>
+        </svg>
+        <span id="badge">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const toastEl = document.getElementById('toast');
+  const recTimeEl = document.getElementById('recTime');
+  const countdownEl = document.getElementById('countdown');
+
+  const modeButtons = document.querySelectorAll('.modeBtn');
+  const zoomBtn = document.getElementById('zoomBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const badgeEl = document.getElementById('badge');
+  const appEl = document.getElementById('app');
+  const hintEl = document.getElementById('hint');
+  const timerBtn = document.getElementById('timerBtn');
+  const timerMenu = document.getElementById('timerMenu');
+  const timerOpts = document.querySelectorAll('.timerOpt');
+
+  let mode = 'photo'; // 'photo' | 'video'
+  let currentStream = null;
+  let devices = { wide: null, ultraWide: null };
+  let currentLens = 'wide'; // 'wide' (1x) | 'ultraWide' (0.5x)
+
+  let photos = [];      // array of { dataUrl }
+  let videoClips = [];  // array of { blob, ext }
+
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let isRecording = false;
+  let recordStartTime = 0;
+  let recTimeInterval = null;
+
+  let selfTimer = 0;        // seconds, 0 = off
+  let countingDown = false;
+  let busy = false;         // debounce guard against double-fire taps
+
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toastEl.classList.remove('show'), 1600);
+  }
+
+  function updateBadge(){
+    const count = mode === 'photo' ? photos.length : videoClips.length;
+    badgeEl.textContent = count;
+    badgeEl.classList.toggle('show', count > 0);
+  }
+
+  async function stopCurrentStream(){
+    if (currentStream){
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+  }
+
+  async function startStream(deviceId){
+    await stopCurrentStream();
+    const constraints = deviceId
+      ? { video: { deviceId: { exact: deviceId } }, audio: mode === 'video' }
+      : { video: { facingMode: { ideal: 'environment' } }, audio: mode === 'video' };
+    try {
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: mode === 'video' });
+      } catch (err2) {
+        showToast('Camera access failed');
+        console.error(err2);
+        return;
+      }
+    }
+    video.srcObject = currentStream;
+    video.play().catch(() => {});
+  }
+
+  async function detectLenses(){
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      let wide = null, ultraWide = null;
+      list.filter(d => d.kind === 'videoinput').forEach(d => {
+        const label = (d.label || '').toLowerCase();
+        const isBack = label.includes('back') || label.includes('rear') || label.includes('environment');
+        if (!isBack && label === '') return;
+        if (label.includes('ultra wide') || label.includes('ultrawide')) {
+          ultraWide = d.deviceId;
+        } else if (isBack && !label.includes('front') && !label.includes('telephoto')) {
+          if (!wide) wide = d.deviceId;
+        }
+      });
+      devices.wide = wide;
+      devices.ultraWide = ultraWide;
+      zoomBtn.disabled = !ultraWide;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function init(){
+    await startStream(null);
+    await detectLenses();
+    updateBadge();
+  }
+
+  async function setLens(lens){
+    const deviceId = lens === 'ultraWide' ? devices.ultraWide : devices.wide;
+    if (!deviceId && lens === 'ultraWide') { showToast('0.5x not available'); return; }
+    currentLens = lens;
+    zoomBtn.textContent = lens === 'ultraWide' ? '0.5x' : '1x';
+    await startStream(deviceId);
+  }
+
+  zoomBtn.addEventListener('click', () => {
+    if (isRecording || countingDown) return;
+    setLens(currentLens === 'wide' ? 'ultraWide' : 'wide');
+  });
+
+  // ---- self-timer menu ----
+  timerBtn.addEventListener('click', () => {
+    timerMenu.classList.toggle('show');
+  });
+  timerOpts.forEach(btn => {
+    btn.addEventListener('click', () => {
+      selfTimer = parseInt(btn.dataset.t, 10);
+      timerOpts.forEach(b => b.classList.toggle('active', b === btn));
+      timerBtn.textContent = selfTimer === 0 ? 'Off' : selfTimer + 's';
+      timerMenu.classList.remove('show');
+    });
+  });
+
+  // ---- mode switching ----
+  modeButtons.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (isRecording || countingDown) { showToast('Busy'); return; }
+      const newMode = btn.dataset.mode;
+      if (newMode === mode) return;
+      mode = newMode;
+      modeButtons.forEach(b => b.classList.toggle('active', b === btn));
+      hintEl.textContent = mode === 'photo' ? 'Tap anywhere to capture' : 'Tap anywhere to start recording';
+      updateBadge();
+      await startStream(currentLens === 'ultraWide' ? devices.ultraWide : devices.wide);
+    });
+  });
+
+  // ---- photo capture ----
+  function capturePhoto(){
+    const w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) return;
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL('image/png');
+    photos.push({ dataUrl });
+    updateBadge();
+  }
+
+  // ---- video recording ----
+  function getSupportedMimeType(){
+    const types = [
+      'video/mp4;codecs=h264,aac',
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm'
+    ];
+    for (const t of types){
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+    }
+    return '';
+  }
+
+  function startRecTimer(){
+    recordStartTime = Date.now();
+    recTimeEl.classList.add('show');
+    recTimeInterval = setInterval(() => {
+      const s = Math.floor((Date.now() - recordStartTime) / 1000);
+      const mm = String(Math.floor(s / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      recTimeEl.textContent = `${mm}:${ss}`;
+    }, 250);
+  }
+  function stopRecTimer(){
+    clearInterval(recTimeInterval);
+    recTimeEl.classList.remove('show');
+    recTimeEl.textContent = '00:00';
+  }
+
+  function startRecording(){
+    if (!currentStream) { showToast('Camera not ready'); return; }
+    const mimeType = getSupportedMimeType();
+    recordedChunks = [];
+    try {
+      mediaRecorder = mimeType
+        ? new MediaRecorder(currentStream, { mimeType })
+        : new MediaRecorder(currentStream);
+    } catch (err) {
+      showToast('Recording not supported');
+      console.error(err);
+      return;
+    }
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const usedType = mediaRecorder.mimeType || 'video/webm';
+      const blob = new Blob(recordedChunks, { type: usedType });
+      const ext = usedType.includes('mp4') ? 'mp4' : 'webm';
+      videoClips.push({ blob, ext });
+      updateBadge();
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    appEl.classList.add('recording');
+    hintEl.textContent = 'Tap anywhere to stop';
+    startRecTimer();
+  }
+
+  function stopRecording(){
+    if (mediaRecorder && isRecording){
+      mediaRecorder.stop();
+    }
+    isRecording = false;
+    appEl.classList.remove('recording');
+    hintEl.textContent = 'Tap anywhere to start recording';
+    stopRecTimer();
+  }
+
+  function doCapture(){
+    if (mode === 'photo'){
+      capturePhoto();
+    } else {
+      if (isRecording) stopRecording();
+      else startRecording();
+    }
+  }
+
+  function runCountdown(seconds, cb){
+    countingDown = true;
+    let remaining = seconds;
+    countdownEl.textContent = remaining;
+    countdownEl.classList.add('show');
+    const iv = setInterval(() => {
+      remaining--;
+      if (remaining <= 0){
+        clearInterval(iv);
+        countdownEl.classList.remove('show');
+        countingDown = false;
+        cb();
+      } else {
+        countdownEl.textContent = remaining;
+      }
+    }, 1000);
+  }
+
+  function handleBackgroundTap(e){
+    if (e.target.closest('#topBar') || e.target.closest('#bottomBar') || e.target.closest('#timerWrap')) return;
+    if (busy || countingDown) return;
+    busy = true;
+    setTimeout(() => { busy = false; }, 350);
+
+    if (selfTimer > 0){
+      runCountdown(selfTimer, doCapture);
+    } else {
+      doCapture();
+    }
+  }
+
+  appEl.addEventListener('pointerup', handleBackgroundTap);
+
+  // ---- download as zip ----
+  function dataUrlToUint8Array(dataUrl){
+    const base64 = dataUrl.split(',')[1];
+    const binary = atob(base64);
+    const arr = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+    return arr;
+  }
+
+  async function downloadAll(){
+    if (mode === 'photo'){
+      if (photos.length === 0) { showToast('No photos yet'); return; }
+      const zip = new JSZip();
+      photos.forEach((p, i) => {
+        zip.file(`photo_${String(i + 1).padStart(3, '0')}.png`, dataUrlToUint8Array(p.dataUrl));
+      });
+      showToast('Zipping photos…');
+      const content = await zip.generateAsync({ type: 'blob' });
+      triggerDownload(content, 'photos.zip');
+    } else {
+      if (videoClips.length === 0) { showToast('No videos yet'); return; }
+      const zip = new JSZip();
+      videoClips.forEach((v, i) => {
+        zip.file(`video_${String(i + 1).padStart(3, '0')}.${v.ext}`, v.blob);
+      });
+      showToast('Zipping videos…');
+      const content = await zip.generateAsync({ type: 'blob' });
+      triggerDownload(content, 'videos.zip');
+    }
+  }
+
+  function triggerDownload(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('Saved ' + filename);
+  }
+
+  downloadBtn.addEventListener('click', downloadAll);
+
+  // init
+  zoomBtn.textContent = '1x';
+  init();
+})();
+</script>
+</body>
+</html>
